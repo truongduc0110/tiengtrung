@@ -1,123 +1,98 @@
 import {
     Box,
     VStack,
-    HStack,
-    Text,
     Icon,
-    Avatar,
-    Divider,
+    Text,
+    Link,
+    Tooltip,
     useColorModeValue,
+    Flex,
 } from '@chakra-ui/react';
-import { Link, useLocation } from 'react-router-dom';
-import {
-    FiHome,
-    FiBook,
-    FiAward,
-    FiSettings,
-    FiLogOut,
-} from 'react-icons/fi';
-import { useAuth } from '../../context/AuthContext';
+import { NavLink as RouterLink, useLocation } from 'react-router-dom';
+import { FaHome, FaGraduationCap, FaTrophy, FaLayerGroup } from 'react-icons/fa';
 
-const menuItems = [
-    { icon: FiHome, label: 'Trang chủ', path: '/' },
-    { icon: FiAward, label: 'Bảng xếp hạng', path: '/leaderboard' },
-];
-
-function Sidebar() {
+const NavItem = ({ icon, children, to }) => {
     const location = useLocation();
-    const { user, logout } = useAuth();
-    const bg = useColorModeValue('white', 'gray.800');
-    const borderColor = useColorModeValue('gray.200', 'gray.700');
+    const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
+    const activeBg = useColorModeValue('brand.500', 'brand.200');
+    const activeColor = 'white';
+    const color = useColorModeValue('gray.600', 'gray.400');
+
+    return (
+        <Link
+            as={RouterLink}
+            to={to}
+            style={{ textDecoration: 'none', width: '100%' }}
+        >
+            <Flex
+                align="center"
+                p="3"
+                mn="4"
+                borderRadius="xl"
+                role="group"
+                cursor="pointer"
+                bg={isActive ? activeBg : 'transparent'}
+                color={isActive ? activeColor : color}
+                _hover={{
+                    bg: isActive ? activeBg : useColorModeValue('gray.100', 'whiteAlpha.100'),
+                }}
+                transition="all 0.2s"
+            >
+                <Icon
+                    mr="4"
+                    fontSize="18"
+                    as={icon}
+                />
+                <Text fontSize="md" fontWeight="medium">
+                    {children}
+                </Text>
+            </Flex>
+        </Link>
+    );
+};
+
+export default function Sidebar() {
+    const glassBg = useColorModeValue('rgba(255, 255, 255, 0.8)', 'rgba(26, 32, 44, 0.8)');
+    const borderColor = useColorModeValue('rgba(0,0,0,0.05)', 'rgba(255,255,255,0.05)');
 
     return (
         <Box
-            as="nav"
-            position="fixed"
-            left={0}
-            top={0}
+            pos="fixed"
+            left="0"
             h="100vh"
-            w="250px"
-            bg={bg}
-            borderRight="1px"
+            w="280px"
+            bg={glassBg}
+            backdropFilter="blur(20px)"
+            borderRight="1px solid"
             borderColor={borderColor}
+            py="8"
+            px="6"
             display={{ base: 'none', md: 'block' }}
-            zIndex={10}
+            zIndex="sticky"
         >
-            <VStack h="full" p={4} spacing={4} align="stretch">
-                {/* Logo */}
-                <HStack spacing={3} px={4} py={3}>
-                    <Text fontSize="2xl">🇨🇳</Text>
-                    <Text fontSize="xl" fontWeight="bold" color="brand.500">
-                        Học Tiếng Trung
-                    </Text>
-                </HStack>
+            <Flex align="center" mb="12" px="2">
+                <Text
+                    fontSize="2xl"
+                    fontFamily="heading"
+                    fontWeight="bold"
+                    bgGradient="linear(to-r, brand.500, accent.500)"
+                    bgClip="text"
+                >
+                    VocabMaster
+                </Text>
+            </Flex>
 
-                <Divider />
-
-                {/* Menu Items */}
-                <VStack spacing={1} align="stretch" flex={1}>
-                    {menuItems.map((item) => {
-                        const isActive = location.pathname === item.path;
-                        return (
-                            <Link key={item.path} to={item.path}>
-                                <HStack
-                                    px={4}
-                                    py={3}
-                                    borderRadius="lg"
-                                    bg={isActive ? 'brand.50' : 'transparent'}
-                                    color={isActive ? 'brand.500' : 'gray.600'}
-                                    _hover={{
-                                        bg: isActive ? 'brand.50' : 'gray.100',
-                                        color: 'brand.500',
-                                    }}
-                                    transition="all 0.2s"
-                                >
-                                    <Icon as={item.icon} fontSize="xl" />
-                                    <Text fontWeight={isActive ? 'semibold' : 'medium'}>
-                                        {item.label}
-                                    </Text>
-                                </HStack>
-                            </Link>
-                        );
-                    })}
-                </VStack>
-
-                <Divider />
-
-                {/* User Profile */}
-                <Box>
-                    <HStack px={4} py={3} spacing={3}>
-                        <Avatar
-                            size="sm"
-                            name={user?.name || user?.email}
-                            src={user?.avatar}
-                        />
-                        <VStack align="start" spacing={0} flex={1}>
-                            <Text fontSize="sm" fontWeight="medium" noOfLines={1}>
-                                {user?.name || 'Người dùng'}
-                            </Text>
-                            <Text fontSize="xs" color="gray.500" noOfLines={1}>
-                                {user?.email}
-                            </Text>
-                        </VStack>
-                    </HStack>
-
-                    <HStack
-                        px={4}
-                        py={3}
-                        borderRadius="lg"
-                        color="gray.600"
-                        cursor="pointer"
-                        _hover={{ bg: 'red.50', color: 'red.500' }}
-                        onClick={logout}
-                    >
-                        <Icon as={FiLogOut} fontSize="xl" />
-                        <Text fontWeight="medium">Đăng xuất</Text>
-                    </HStack>
-                </Box>
+            <VStack spacing="2" align="stretch">
+                <NavItem to="/" icon={FaHome}>
+                    Tổng quan
+                </NavItem>
+                <NavItem to="/classes" icon={FaGraduationCap}>
+                    Lớp học
+                </NavItem>
+                <NavItem to="/leaderboard" icon={FaTrophy}>
+                    Xếp hạng
+                </NavItem>
             </VStack>
         </Box>
     );
 }
-
-export default Sidebar;

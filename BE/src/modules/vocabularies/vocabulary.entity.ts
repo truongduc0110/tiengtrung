@@ -11,28 +11,28 @@ import {
 import { VocabularySet } from '../vocabulary-sets/vocabulary-set.entity';
 
 @Entity('vocabularies')
-@Unique(['chinese', 'vocabularySetId'])
+@Unique(['word', 'vocabularySetId'])
 export class Vocabulary {
     @PrimaryGeneratedColumn()
     id: number;
 
     @Column()
-    chinese: string;
+    word: string; // Từ gốc: hello, 你好, こんにちは, 안녕
 
     @Column({ nullable: true })
-    pinyin: string;
+    pronunciation: string; // Phiên âm chính: IPA, pinyin, hiragana, romaja
+
+    @Column({ nullable: true })
+    pronunciation2: string; // Phiên âm phụ: romaji cho tiếng Nhật
 
     @Column()
-    meaning: string;
+    meaning: string; // Nghĩa tiếng Việt
 
     @Column({ nullable: true })
     example: string;
 
     @Column({ nullable: true })
     partOfSpeech: string;
-
-    @Column({ nullable: true })
-    audio: string;
 
     @Column()
     vocabularySetId: number;

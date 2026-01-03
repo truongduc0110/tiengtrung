@@ -95,8 +95,9 @@ export class VocabulariesService {
 
             return {
                 id: vocab.id,
-                question: vocab.chinese,
-                pinyin: vocab.pinyin,
+                question: vocab.word,
+                pronunciation: vocab.pronunciation,
+                pronunciation2: vocab.pronunciation2,
                 correctAnswer: vocab.meaning,
                 options,
             };

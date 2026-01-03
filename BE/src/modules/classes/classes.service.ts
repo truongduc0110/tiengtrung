@@ -45,7 +45,7 @@ export class ClassesService {
     async findAllByUser(userId: number): Promise<Class[]> {
         const memberships = await this.memberRepository.find({
             where: { userId },
-            relations: ['class', 'class.owner'],
+            relations: ['class', 'class.owner', 'class.language'],
         });
         return memberships.map((m) => m.class);
     }
@@ -53,7 +53,7 @@ export class ClassesService {
     async findById(id: number): Promise<Class> {
         const cls = await this.classRepository.findOne({
             where: { id },
-            relations: ['owner', 'members', 'members.user', 'vocabularySets'],
+            relations: ['owner', 'language', 'members', 'members.user', 'vocabularySets'],
         });
         if (!cls) {
             throw new NotFoundException('Class not found');

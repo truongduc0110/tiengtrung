@@ -15,10 +15,11 @@ import {
     IconButton,
     useToast,
     Badge,
-    Input,
+    Flex,
+    Container,
+    useColorModeValue,
     RadioGroup,
     Radio,
-    Stack,
     Table,
     Thead,
     Tbody,
@@ -26,28 +27,23 @@ import {
     Th,
     Td,
     TableContainer,
-    Checkbox,
-    Flex,
-    Divider,
-    Container,
-    Tooltip,
 } from '@chakra-ui/react';
 import {
     FiArrowLeft, FiRotateCw, FiCheck, FiX, FiVolume2,
-    FiSettings, FiPlay, FiGrid, FiList, FiCheckCircle
+    FiSettings, FiPlay, FiCheckCircle
 } from 'react-icons/fi';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { vocabulariesAPI, activityAPI } from '../services/api';
+import { vocabulariesAPI, activityAPI, ttsAPI } from '../services/api';
 
 const MotionBox = motion(Box);
 
 const GAME_MODES = [
-    { id: 'flashcard', name: 'Flashcard', icon: '🃏', description: 'Lật thẻ học từ', color: 'blue.500', bg: 'blue.50' },
-    { id: 'quiz', name: 'Quiz', icon: '❓', description: 'Trắc nghiệm 4 đáp án', color: 'purple.500', bg: 'purple.50' },
-    { id: 'listening', name: 'Luyện nghe', icon: '👂', description: 'Nghe và chọn từ', color: 'green.500', bg: 'green.50' },
-    { id: 'typing', name: 'Gõ từ', icon: '⌨️', description: 'Gõ từ theo nghĩa', color: 'orange.500', bg: 'orange.50' },
-    { id: 'matching', name: 'Nối từ', icon: '🔗', description: 'Nối từ vựng và nghĩa', color: 'pink.500', bg: 'pink.50' },
+    { id: 'flashcard', name: 'Flashcard', icon: '🃏', description: 'Lật thẻ học từ', color: 'blue.500', bg: 'blue.50', gradient: 'linear(to-br, blue.400, purple.500)' },
+    { id: 'quiz', name: 'Quiz', icon: '❓', description: 'Trắc nghiệm 4 đáp án', color: 'purple.500', bg: 'purple.50', gradient: 'linear(to-br, purple.400, pink.500)' },
+    { id: 'listening', name: 'Luyện nghe', icon: '👂', description: 'Nghe và chọn từ', color: 'green.500', bg: 'green.50', gradient: 'linear(to-br, green.400, teal.500)' },
+    // { id: 'typing', name: 'Gõ từ', icon: '⌨️', description: 'Gõ từ theo nghĩa', color: 'orange.500', bg: 'orange.50' },
+    // { id: 'matching', name: 'Nối từ', icon: '🔗', description: 'Nối từ vựng và nghĩa', color: 'pink.500', bg: 'pink.50' },
 ];
 
 function Practice() {
@@ -60,20 +56,13 @@ function Practice() {
     const [showAnswer, setShowAnswer] = useState(false);
     const [results, setResults] = useState([]);
     const [gameComplete, setGameComplete] = useState(false);
-    const [userAnswer, setUserAnswer] = useState('');
     const [quizOptions, setQuizOptions] = useState([]);
     const [selectedOption, setSelectedOption] = useState('');
-
-    // Matching Game State
-    const [matchingItems, setMatchingItems] = useState([]);
-    const [selectedMatch, setSelectedMatch] = useState(null);
-    const [matchedIds, setMatchedIds] = useState([]);
-
-    // Settings State
     const [settings, setSettings] = useState({ count: 'all', mode: 'all' });
 
     const navigate = useNavigate();
     const toast = useToast();
+    const cardBg = useColorModeValue('white', 'gray.800');
 
     useEffect(() => {
         fetchVocabularies();
@@ -82,22 +71,15 @@ function Practice() {
     const fetchVocabularies = async () => {
         try {
             const response = await vocabulariesAPI.getBySet(setId);
-            const vocabs = response.data.data;
-            setAllVocabularies(vocabs);
+            setAllVocabularies(response.data.data);
         } catch (error) {
             console.error('Failed to fetch vocabularies:', error);
-            toast({
-                title: 'Lỗi',
-                description: 'Không thể tải danh sách từ vựng',
-                status: 'error',
-                duration: 3000,
-            });
+            toast({ title: 'Lỗi', description: 'Không thể tải danh sách từ vựng', status: 'error' });
         } finally {
             setLoading(false);
         }
     };
 
-    // Filter Logic
     const filteredVocabs = useMemo(() => {
         let vocabs = [...allVocabularies];
         if (settings.mode === 'unlearned') {
@@ -111,11 +93,10 @@ function Practice() {
         return filteredVocabs.slice(0, parseInt(settings.count));
     }, [filteredVocabs, settings.count]);
 
-    // Keyboard Shortcuts
+    // Keyboard handling
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (gameComplete || !gameMode) return;
-
             const current = vocabularies[currentIndex];
 
             if (gameMode === 'flashcard') {
@@ -128,7 +109,7 @@ function Practice() {
                 }
             }
 
-            if (gameMode === 'quiz' || gameMode === 'listening') {
+            if ((gameMode === 'quiz' || gameMode === 'listening')) {
                 if (['1', '2', '3', '4'].includes(e.key)) {
                     const index = parseInt(e.key) - 1;
                     if (quizOptions[index] && !showAnswer) {
@@ -136,12 +117,11 @@ function Practice() {
                     }
                 }
                 if (e.code === 'Enter' && selectedOption && !showAnswer) {
-                    if (gameMode === 'quiz') handleQuizAnswer();
-                    else handleListeningAnswer();
+                    handleQuizAnswer();
                 }
                 if (gameMode === 'listening' && e.code === 'Space') {
                     e.preventDefault();
-                    if (current) playAudio(current.chinese);
+                    if (current) playAudio(current.word);
                 }
             }
         };
@@ -152,71 +132,44 @@ function Practice() {
 
     const startGame = (mode) => {
         if (previewVocabs.length === 0) {
-            toast({
-                title: 'Không có từ vựng phù hợp',
-                description: 'Vui lòng chọn chế độ khác hoặc thêm từ mới',
-                status: 'warning',
-            });
+            toast({ title: 'Không có từ vựng', description: 'Vui lòng chọn chế độ khác', status: 'warning' });
             return;
         }
-
-        // Shuffle for the game
         const gameVocabs = [...previewVocabs].sort(() => Math.random() - 0.5);
-
         setGameMode(mode);
         setVocabularies(gameVocabs);
         setCurrentIndex(0);
         setResults([]);
         setGameComplete(false);
         setShowAnswer(false);
-        setUserAnswer('');
-        setMatchedIds([]);
-        setSelectedMatch(null);
 
         if (mode === 'quiz' || mode === 'listening') {
             generateQuizOptions(0, gameVocabs);
-        } else if (mode === 'matching') {
-            generateMatchingGame(gameVocabs);
         }
-
         activityAPI.log();
     };
 
-    const generateMatchingGame = (vocabs) => {
-        let items = [];
-        // Limit matching pairs to 8 for better UI (16 items grid) if list is too long
-        const gameSet = vocabs.length > 8 ? vocabs.slice(0, 8) : vocabs;
-
-        gameSet.forEach(v => {
-            items.push({ id: `l-${v.id}`, content: v.chinese, type: 'chinese', vocabId: v.id });
-            items.push({ id: `r-${v.id}`, content: v.meaning, type: 'meaning', vocabId: v.id });
-        });
-        setMatchingItems(items.sort(() => Math.random() - 0.5));
-    };
-
-    const playAudio = (text) => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
-        window.speechSynthesis.speak(utterance);
+    const playAudio = async (text) => {
+        try {
+            await ttsAPI.speak(text);
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     const generateQuizOptions = (index, vocabs = vocabularies) => {
         const current = vocabs[index];
         if (!current) return;
 
-        // Ensure we pick random WRONG answers from the current GAME vocabularies first, 
-        // fallback to allVocabularies if not enough
         let pool = vocabs.length >= 4 ? vocabs : allVocabularies;
-
         const wrongOptions = pool
             .filter((v) => v.id !== current.id)
             .sort(() => Math.random() - 0.5)
             .slice(0, 3)
             .map((v) => v.meaning);
 
-        // If still not enough (very rare edge case where total vocabs < 4), fill safely
         while (wrongOptions.length < 3 && wrongOptions.length < pool.length - 1) {
-            wrongOptions.push("Đáp án khác"); // Fallback
+            wrongOptions.push("Đáp án khác");
         }
 
         const options = [...wrongOptions, current.meaning].sort(() => Math.random() - 0.5);
@@ -236,59 +189,12 @@ function Practice() {
         setTimeout(() => nextQuestion(), 1000);
     };
 
-    const handleListeningAnswer = () => {
-        const correct = selectedOption === vocabularies[currentIndex].meaning;
-        setResults([...results, { vocab: vocabularies[currentIndex], correct }]);
-        setShowAnswer(true);
-        setTimeout(() => nextQuestion(), 1000);
-    };
-
-    const handleMatchingClick = (item) => {
-        if (matchedIds.includes(item.id)) return;
-
-        if (!selectedMatch) {
-            setSelectedMatch(item);
-        } else {
-            if (selectedMatch.id === item.id) {
-                setSelectedMatch(null);
-                return;
-            }
-
-            if (selectedMatch.vocabId === item.vocabId && selectedMatch.type !== item.type) {
-                const newMatched = [...matchedIds, selectedMatch.id, item.id];
-                setMatchedIds(newMatched);
-                setSelectedMatch(null);
-
-                if (newMatched.length === matchingItems.length) {
-                    setResults(vocabularies.map(v => ({ vocab: v, correct: true })));
-                    setGameComplete(true);
-                }
-            } else {
-                toast({ title: 'Chưa chính xác', status: 'error', duration: 500 });
-                setSelectedMatch(null);
-            }
-        }
-    };
-
-    const handleTypingAnswer = () => {
-        const current = vocabularies[currentIndex];
-        const normalizedUser = userAnswer.toLowerCase().trim();
-        const normalizedChinese = current.chinese.toLowerCase();
-        const normalizedPinyin = current.pinyin?.toLowerCase() || '';
-
-        const correct = normalizedUser === normalizedChinese || normalizedUser === normalizedPinyin;
-        setResults([...results, { vocab: current, correct }]);
-        setShowAnswer(true);
-        setTimeout(() => nextQuestion(), 1500);
-    };
-
     const nextQuestion = () => {
         if (currentIndex + 1 >= vocabularies.length) {
             setGameComplete(true);
         } else {
             setCurrentIndex(currentIndex + 1);
             setShowAnswer(false);
-            setUserAnswer('');
             if (gameMode === 'quiz' || gameMode === 'listening') {
                 generateQuizOptions(currentIndex + 1);
             }
@@ -297,686 +203,259 @@ function Practice() {
 
     const resetGame = () => {
         setGameMode(null);
-        // Maybe refresh vocabs? No, keep context
     };
 
-    if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minH="60vh">
-                <Spinner size="xl" color="brand.500" thickness="4px" />
-            </Box>
-        );
-    }
+    if (loading) return <Flex justify="center" align="center" minH="50vh"><Spinner size="xl" color="brand.500" /></Flex>;
+    if (allVocabularies.length === 0) return <Container centerContent py={20}><Text fontSize="4xl">📭</Text><Button onClick={() => navigate(-1)}>Quay lại</Button></Container>;
 
-    if (allVocabularies.length === 0) {
-        return (
-            <Container centerContent py={20}>
-                <VStack spacing={6}>
-                    <Text fontSize="6xl">📭</Text>
-                    <Heading size="md" textAlign="center">Bộ từ vựng này chưa có từ nào</Heading>
-                    <Button onClick={() => navigate(-1)} variant="outline">Quay lại</Button>
-                </VStack>
-            </Container>
-        );
-    }
-
-    // DASHBOARD VIEW (Default)
+    // Dashboard View
     if (!gameMode) {
         return (
             <Container maxW="container.xl" py={8}>
-                {/* Header */}
-                <HStack mb={8} justify="space-between">
-                    <HStack>
-                        <IconButton
-                            icon={<FiArrowLeft />}
-                            variant="ghost"
-                            onClick={() => navigate(-1)}
-                            aria-label="Back"
-                            fontSize="xl"
-                        />
-                        <VStack align="start" spacing={0}>
-                            <Heading size="lg">Trung tâm Luyện tập</Heading>
-                            <Text color="gray.500">Chọn từ vựng và chế độ để bắt đầu</Text>
-                        </VStack>
-                    </HStack>
-                </HStack>
+                <Box
+                    bgGradient="linear(to-r, brand.600, accent.600)"
+                    borderRadius="3xl"
+                    p={8}
+                    mb={8}
+                    color="white"
+                    position="relative"
+                    overflow="hidden"
+                    boxShadow="xl"
+                >
+                    <IconButton icon={<Icon as={FiArrowLeft} color="white" />} position="absolute" top={4} left={4} variant="ghost" onClick={() => navigate(-1)} />
+                    <VStack spacing={2} pt={4}>
+                        <Text fontSize="6xl">🎮</Text>
+                        <Heading size="xl" fontFamily="heading">Trung tâm Luyện tập</Heading>
+                        <Text opacity={0.9}>Chọn chế độ và bắt đầu chinh phục từ vựng!</Text>
+                    </VStack>
+                </Box>
 
                 <Flex direction={{ base: 'column', lg: 'row' }} gap={8}>
-                    {/* Left Column: List & Filters */}
                     <Box flex="2">
-                        <Card variant="outline" mb={6} borderRadius="xl" overflow="hidden">
-                            <Box bg="gray.50" p={4} borderBottom="1px" borderColor="gray.100">
+                        <Card variant="outline" borderRadius="2xl" border="1px solid" borderColor="gray.100" overflow="hidden">
+                            <Box p={4} bg="gray.50" borderBottom="1px solid" borderColor="gray.100">
                                 <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
-                                    <HStack spacing={4}>
-                                        <HStack>
-                                            <Icon as={FiSettings} color="gray.500" />
-                                            <Text fontWeight="bold">Bộ lọc:</Text>
-                                        </HStack>
-                                        <RadioGroup
-                                            value={settings.mode}
-                                            onChange={(val) => setSettings({ ...settings, mode: val })}
-                                        >
-                                            <HStack spacing={4}>
-                                                <Radio value="all">Tất cả ({allVocabularies.length})</Radio>
-                                                <Radio value="unlearned">Chưa thuộc ({allVocabularies.filter(v => !v.isLearned).length})</Radio>
-                                            </HStack>
-                                        </RadioGroup>
-                                    </HStack>
-
                                     <HStack>
-                                        <Text fontSize="sm" color="gray.600">Hiển thị:</Text>
-                                        <RadioGroup
-                                            value={settings.count}
-                                            onChange={(val) => setSettings({ ...settings, count: val })}
-                                        >
-                                            <HStack spacing={2}>
-                                                <Radio value="5">5</Radio>
-                                                <Radio value="10">10</Radio>
-                                                <Radio value="20">20</Radio>
-                                                <Radio value="all">Tất cả</Radio>
-                                            </HStack>
-                                        </RadioGroup>
+                                        <Icon as={FiSettings} color="gray.500" />
+                                        <Text fontWeight="bold">Tùy chọn:</Text>
                                     </HStack>
+                                    <RadioGroup value={settings.count} onChange={(val) => setSettings({ ...settings, count: val })}>
+                                        <HStack spacing={4}>
+                                            <Radio value="10">10 từ</Radio>
+                                            <Radio value="20">20 từ</Radio>
+                                            <Radio value="all">Tất cả</Radio>
+                                        </HStack>
+                                    </RadioGroup>
                                 </Flex>
                             </Box>
-
-                            <Box maxH="600px" overflowY="auto">
+                            <Box maxH="500px" overflowY="auto">
                                 <TableContainer>
-                                    <Table variant="simple" size="md">
+                                    <Table variant="simple">
                                         <Thead position="sticky" top={0} bg="white" zIndex={1}>
-                                            <Tr>
-                                                <Th>Từ vựng</Th>
-                                                <Th>Phiên âm</Th>
-                                                <Th>Nghĩa</Th>
-                                                <Th textAlign="center">Trạng thái</Th>
-                                                <Th></Th>
-                                            </Tr>
+                                            <Tr><Th>Từ vựng</Th><Th>Nghĩa</Th><Th>TT</Th></Tr>
                                         </Thead>
                                         <Tbody>
-                                            {previewVocabs.map((vocab) => (
-                                                <Tr key={vocab.id} _hover={{ bg: 'gray.50' }}>
-                                                    <Td fontWeight="bold" fontSize="lg" fontFamily="'Noto Sans SC'">{vocab.chinese}</Td>
-                                                    <Td color="gray.600">{vocab.pinyin}</Td>
-                                                    <Td>{vocab.meaning}</Td>
-                                                    <Td textAlign="center">
-                                                        {vocab.isLearned ? (
-                                                            <Badge colorScheme="green">Đã thuộc</Badge>
-                                                        ) : (
-                                                            <Badge colorScheme="gray">Chưa thuộc</Badge>
-                                                        )}
-                                                    </Td>
-                                                    <Td>
-                                                        <IconButton
-                                                            icon={<FiVolume2 />}
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            colorScheme="brand"
-                                                            onClick={() => playAudio(vocab.chinese)}
-                                                        />
-                                                    </Td>
+                                            {previewVocabs.map((v) => (
+                                                <Tr key={v.id}>
+                                                    <Td fontWeight="bold">{v.word}</Td>
+                                                    <Td>{v.meaning}</Td>
+                                                    <Td><Badge colorScheme={v.isLearned ? 'green' : 'gray'}>{v.isLearned ? 'OK' : '-'}</Badge></Td>
                                                 </Tr>
                                             ))}
-                                            {previewVocabs.length === 0 && (
-                                                <Tr>
-                                                    <Td colSpan={5} textAlign="center" py={8} color="gray.500">
-                                                        Không tìm thấy từ vựng nào theo bộ lọc
-                                                    </Td>
-                                                </Tr>
-                                            )}
                                         </Tbody>
                                     </Table>
                                 </TableContainer>
                             </Box>
-                            <Box p={3} bg="gray.50" borderTop="1px" borderColor="gray.100" textAlign="right">
-                                <Text fontSize="sm" color="gray.500">
-                                    Đang hiển thị {previewVocabs.length} từ vựng sẽ được dùng trong game
-                                </Text>
-                            </Box>
                         </Card>
                     </Box>
 
-                    {/* Right Column: Game Modes */}
-                    <Box flex="1" minW="300px">
-                        <Card position="sticky" top="20px" borderRadius="xl" boxShadow="sm">
-                            <CardBody>
-                                <Heading size="md" mb={4}>Chọn chế độ chơi</Heading>
-                                <VStack spacing={3} align="stretch">
-                                    {GAME_MODES.map((mode) => (
-                                        <Button
-                                            key={mode.id}
-                                            h="auto"
-                                            py={4}
-                                            justifyContent="flex-start"
-                                            variant="ghost"
-                                            bg={mode.bg}
-                                            color={mode.color}
-                                            _hover={{ bg: mode.bg, transform: 'translateX(5px)', shadow: 'sm' }}
-                                            onClick={() => startGame(mode.id)}
-                                            leftIcon={<Text fontSize="2xl">{mode.icon}</Text>}
-                                            isDisabled={previewVocabs.length === 0}
-                                        >
-                                            <VStack align="start" spacing={0}>
-                                                <Text fontWeight="bold">{mode.name}</Text>
-                                                <Text fontSize="xs" color="gray.500" fontWeight="normal">{mode.description}</Text>
-                                            </VStack>
-                                        </Button>
-                                    ))}
-                                </VStack>
-                            </CardBody>
-                        </Card>
+                    <Box flex="1">
+                        <VStack spacing={4} align="stretch">
+                            {GAME_MODES.map((mode) => (
+                                <motion.div key={mode.id} whileHover={{ y: -5 }}>
+                                    <Button
+                                        w="full"
+                                        h="auto"
+                                        py={6}
+                                        bgGradient={mode.gradient}
+                                        color="white"
+                                        _hover={{ opacity: 0.9 }}
+                                        onClick={() => startGame(mode.id)}
+                                        borderRadius="2xl"
+                                        boxShadow="lg"
+                                        leftIcon={<Text fontSize="3xl" mr={2}>{mode.icon}</Text>}
+                                    >
+                                        <VStack align="start" spacing={0}>
+                                            <Text fontSize="lg" fontWeight="bold">{mode.name}</Text>
+                                            <Text fontSize="xs" opacity={0.9}>{mode.description}</Text>
+                                        </VStack>
+                                    </Button>
+                                </motion.div>
+                            ))}
+                        </VStack>
                     </Box>
                 </Flex>
             </Container>
         );
     }
 
-    // ... GAME LOGIC RENDERERS (Flashcard, Quiz, etc.) ...
-    // Since I cannot rewrite the entire file's bottom part without context and code duplication, 
-    // I will assume the rest of the render logic needs to be preserved.
-    // However, I am using write_to_file which OVERWRITES. 
-    // So I MUST include the rest of the file content. 
-
-    // ... [Copying the rest of the game components from previous view_file] ...
-
-    // Game Complete
+    // GAME OVER
     if (gameComplete) {
         const correctCount = results.filter((r) => r.correct).length;
         const percentage = Math.round((correctCount / results.length) * 100);
 
         return (
-            <Box maxW="600px" mx="auto" textAlign="center" py={10}>
-                <Text fontSize="6xl" mb={4}>
-                    {percentage >= 80 ? '🎉' : percentage >= 50 ? '👍' : '💪'}
-                </Text>
-                <Heading size="xl" mb={4}>Hoàn thành!</Heading>
-                <Text fontSize="2xl" mb={6}>
-                    {correctCount}/{results.length} câu đúng ({percentage}%)
-                </Text>
+            <Container centerContent py={20}>
+                <VStack spacing={6} p={10} bg="white" borderRadius="3xl" boxShadow="2xl" w="full" maxW="lg">
+                    <Text fontSize="8xl">{percentage >= 80 ? '🎉' : '💪'}</Text>
+                    <Heading size="xl" fontFamily="heading" bgGradient="linear(to-r, brand.500, accent.500)" bgClip="text">
+                        {percentage >= 80 ? 'Tuyệt vời!' : 'Hoàn thành!'}
+                    </Heading>
+                    <Text fontSize="2xl" fontWeight="bold">
+                        {correctCount}/{results.length} chính xác
+                    </Text>
+                    <Progress value={percentage} w="full" colorScheme={percentage >= 80 ? 'green' : 'yellow'} borderRadius="full" size="lg" />
 
-                <Progress
-                    value={percentage}
-                    colorScheme={percentage >= 80 ? 'green' : percentage >= 50 ? 'yellow' : 'red'}
-                    size="lg"
-                    borderRadius="full"
-                    mb={8}
-                />
-
-                <HStack justify="center" spacing={4}>
-                    <Button variant="outline" onClick={() => navigate(-1)}>
-                        Quay lại
-                    </Button>
-                    <Button
-                        colorScheme="brand"
-                        leftIcon={<FiRotateCw />}
-                        onClick={resetGame}
-                    >
-                        Học lại
-                    </Button>
-                </HStack>
-
-                {/* Wrong answers */}
-                {results.filter((r) => !r.correct).length > 0 && (
-                    <Box mt={8} textAlign="left">
-                        <Heading size="sm" mb={4}>Từ cần ôn lại:</Heading>
-                        <VStack spacing={2}>
-                            {results
-                                .filter((r) => !r.correct)
-                                .map((r, i) => (
-                                    <HStack
-                                        key={i}
-                                        w="full"
-                                        p={3}
-                                        bg="red.50"
-                                        borderRadius="lg"
-                                        justify="space-between"
-                                    >
-                                        <Text fontWeight="bold" fontFamily="'Noto Sans SC'">{r.vocab.chinese}</Text>
-                                        <Text color="gray.600">{r.vocab.meaning}</Text>
-                                    </HStack>
-                                ))}
-                        </VStack>
-                    </Box>
-                )}
-            </Box>
+                    <HStack spacing={4} pt={4} w="full">
+                        <Button variant="outline" flex={1} onClick={() => navigate(-1)} borderRadius="xl">Thoát</Button>
+                        <Button colorScheme="brand" flex={1} leftIcon={<FiRotateCw />} onClick={resetGame} borderRadius="xl">Chơi lại</Button>
+                    </HStack>
+                </VStack>
+            </Container>
         );
     }
 
     const current = vocabularies[currentIndex];
     const progress = ((currentIndex + 1) / vocabularies.length) * 100;
 
-    // Flashcard Mode
-    if (gameMode === 'flashcard') {
-        return (
-            <Box maxW="500px" mx="auto" pt={10}>
-                <HStack mb={6}>
-                    <IconButton
-                        icon={<FiArrowLeft />}
-                        variant="ghost"
-                        onClick={resetGame}
-                        aria-label="Quay lại"
-                    />
-                    <Progress value={progress} flex={1} colorScheme="brand" borderRadius="full" hasStripe isAnimated />
-                    <Badge colorScheme="brand" variant="solid" borderRadius="full" px={2}>{currentIndex + 1}/{vocabularies.length}</Badge>
-                </HStack>
+    // GAME PLAY UI
+    return (
+        <Container maxW="600px" py={10}>
+            <HStack mb={8}>
+                <IconButton icon={<FiX />} variant="ghost" onClick={resetGame} isRound />
+                <Progress value={progress} flex={1} colorScheme="brand" borderRadius="full" hasStripe isAnimated size="sm" />
+                <Badge colorScheme="brand" borderRadius="full" px={3}>{currentIndex + 1}/{vocabularies.length}</Badge>
+            </HStack>
 
-                <AnimatePresence mode="wait">
-                    <MotionBox
-                        key={currentIndex}
-                        initial={{ opacity: 0, x: 50, rotateY: -90 }}
-                        animate={{ opacity: 1, x: 0, rotateY: 0 }}
-                        exit={{ opacity: 0, x: -50, rotateY: 90 }}
-                        transition={{ duration: 0.3 }}
-                    >
-                        <Card
-                            minH="350px"
-                            cursor="pointer"
-                            onClick={() => setShowAnswer(!showAnswer)}
-                            bg={showAnswer ? 'brand.50' : 'white'}
-                            transition="all 0.3s"
-                            boxShadow="2xl"
-                            borderRadius="2xl"
-                            border="1px solid"
-                            borderColor="gray.100"
+            <AnimatePresence mode="wait">
+                {gameMode === 'flashcard' && (
+                    <Box>
+                        <MotionBox
+                            key={currentIndex}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
                         >
-                            <CardBody
-                                display="flex"
-                                flexDirection="column"
-                                alignItems="center"
-                                justifyContent="center"
-                                textAlign="center"
-                                p={8}
-                            >
-                                {!showAnswer ? (
-                                    <>
-                                        <Text fontSize="6xl" fontWeight="bold" fontFamily="'Noto Sans SC'" mb={6} color="gray.800">
-                                            {current.chinese}
-                                        </Text>
-                                        <Text color="brand.500" fontSize="2xl" fontWeight="medium">{current.pinyin}</Text>
-                                        <Text color="gray.400" fontSize="sm" mt={8} fontStyle="italic">Chạm để lật thẻ</Text>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Text fontSize="3xl" mb={4} fontWeight="bold" color="gray.800">{current.meaning}</Text>
-                                        {current.example && (
-                                            <Box bg="whiteAlpha.500" p={4} borderRadius="lg" w="full">
-                                                <Text color="gray.600" fontSize="md">
-                                                    "{current.example}"
-                                                </Text>
-                                            </Box>
-                                        )}
-                                        <IconButton
-                                            icon={<FiVolume2 />}
-                                            isRound
-                                            size="lg"
-                                            mt={6}
-                                            onClick={(e) => { e.stopPropagation(); playAudio(current.chinese); }}
-                                            colorScheme="brand"
-                                            variant="ghost"
-                                        />
-                                    </>
-                                )}
-                            </CardBody>
-                        </Card>
-                    </MotionBox>
-                </AnimatePresence>
-
-                {showAnswer && (
-                    <HStack justify="center" spacing={6} mt={10}>
-                        <Button
-                            size="lg"
-                            colorScheme="red"
-                            variant="outline"
-                            leftIcon={<FiX />}
-                            onClick={() => handleFlashcardAnswer(false)}
-                            w="150px"
-                            height="60px"
-                            borderRadius="xl"
-                        >
-                            Quên
-                        </Button>
-                        <Button
-                            size="lg"
-                            colorScheme="green"
-                            leftIcon={<FiCheck />}
-                            onClick={() => handleFlashcardAnswer(true)}
-                            w="150px"
-                            height="60px"
-                            borderRadius="xl"
-                            boxShadow="lg"
-                        >
-                            Đã nhớ
-                        </Button>
-                    </HStack>
-                )}
-            </Box>
-        );
-    }
-
-    // Quiz Mode
-    if (gameMode === 'quiz') {
-        return (
-            <Box maxW="600px" mx="auto" pt={10}>
-                <HStack mb={8}>
-                    <IconButton
-                        icon={<FiArrowLeft />}
-                        variant="ghost"
-                        onClick={resetGame}
-                        aria-label="Quay lại"
-                    />
-                    <Progress value={progress} flex={1} colorScheme="brand" borderRadius="full" hasStripe isAnimated />
-                    <Badge colorScheme="purple">{currentIndex + 1}/{vocabularies.length}</Badge>
-                </HStack>
-
-                <Card mb={8} borderRadius="2xl" boxShadow="xl">
-                    <CardBody textAlign="center" py={10}>
-                        <Text fontSize="5xl" fontWeight="bold" fontFamily="'Noto Sans SC'" mb={4}>
-                            {current.chinese}
-                        </Text>
-                        <Text color="brand.500" fontSize="xl">{current.pinyin}</Text>
-                    </CardBody>
-                    <IconButton
-                        aria-label="Play audio"
-                        icon={<FiVolume2 />}
-                        position="absolute"
-                        top={4}
-                        right={4}
-                        isRound
-                        onClick={() => playAudio(current.chinese)}
-                    />
-                </Card>
-
-                <SimpleGrid columns={1} spacing={4}>
-                    {quizOptions.map((option, i) => {
-                        const isCorrect = option === current.meaning;
-                        const isSelected = selectedOption === option;
-                        let bg = 'white';
-                        let borderColor = 'gray.200';
-
-                        if (showAnswer) {
-                            if (isCorrect) { bg = 'green.50'; borderColor = 'green.500'; }
-                            else if (isSelected && !isCorrect) { bg = 'red.50'; borderColor = 'red.500'; }
-                        } else if (isSelected) {
-                            bg = 'brand.50';
-                            borderColor = 'brand.500';
-                        }
-
-                        return (
-                            <Box
-                                key={i}
-                                p={5}
-                                bg={bg}
-                                borderRadius="xl"
-                                border="2px solid"
-                                borderColor={borderColor}
-                                cursor={showAnswer ? 'default' : 'pointer'}
-                                transition="all 0.2s"
-                                onClick={() => !showAnswer && setSelectedOption(option)}
-                                _hover={!showAnswer ? { borderColor: 'brand.400', transform: 'translateY(-2px)', shadow: 'md' } : {}}
+                            <Card
+                                minH="400px"
+                                cursor="pointer"
+                                onClick={() => setShowAnswer(!showAnswer)}
+                                borderRadius="3xl"
+                                boxShadow="2xl"
+                                bg={showAnswer ? 'white' : 'brand.500'}
+                                color={showAnswer ? 'gray.800' : 'white'}
                                 position="relative"
+                                overflow="hidden"
                             >
-                                <HStack>
-                                    <Badge borderRadius="full" px={2} mr={3} colorScheme="gray">{i + 1}</Badge>
-                                    <Text fontSize="lg" fontWeight="medium">{option}</Text>
-                                    {showAnswer && isCorrect && (
-                                        <Icon as={FiCheckCircle} color="green.500" ml="auto" fontSize="xl" />
+                                <CardBody display="flex" flexDirection="column" align="center" justify="center" p={10} textAlign="center">
+                                    {!showAnswer ? (
+                                        <>
+                                            <VStack spacing={4}>
+                                                <Text fontSize="5xl" fontWeight="bold" fontFamily="heading">{current.word}</Text>
+                                                <Text fontSize="2xl" opacity={0.9}>{current.pronunciation}</Text>
+                                                {current.pronunciation2 && <Text fontSize="lg" opacity={0.8}>{current.pronunciation2}</Text>}
+                                            </VStack>
+                                            <Text position="absolute" bottom={8} fontSize="sm" opacity={0.6}>Chạm để lật thẻ</Text>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <VStack spacing={6}>
+                                                <Text fontSize="3xl" fontWeight="bold" color="brand.600">{current.meaning}</Text>
+                                                {current.example && <Text color="gray.500" fontStyle="italic">"{current.example}"</Text>}
+                                                <IconButton
+                                                    icon={<FiVolume2 />}
+                                                    isRound
+                                                    colorScheme="brand"
+                                                    size="lg"
+                                                    onClick={(e) => { e.stopPropagation(); playAudio(current.word); }}
+                                                />
+                                            </VStack>
+                                        </>
                                     )}
-                                </HStack>
-                            </Box>
-                        );
-                    })}
-                </SimpleGrid>
+                                </CardBody>
+                            </Card>
+                        </MotionBox>
 
-                {selectedOption && !showAnswer && (
-                    <Button
-                        mt={8}
-                        w="full"
-                        colorScheme="brand"
-                        size="lg"
-                        height="60px"
-                        borderRadius="xl"
-                        onClick={handleQuizAnswer}
-                        boxShadow="lg"
-                    >
-                        Kiểm tra
-                    </Button>
-                )}
-            </Box>
-        );
-    }
-
-    // Listening Mode
-    if (gameMode === 'listening') {
-        if (!current) return null;
-        return (
-            <Box maxW="600px" mx="auto" pt={10}>
-                <HStack mb={8}>
-                    <IconButton
-                        icon={<FiArrowLeft />}
-                        variant="ghost"
-                        onClick={resetGame}
-                        aria-label="Quay lại"
-                    />
-                    <Progress value={progress} flex={1} colorScheme="green" borderRadius="full" hasStripe isAnimated />
-                    <Badge colorScheme="green">{currentIndex + 1}/{vocabularies.length}</Badge>
-                </HStack>
-
-                <Card mb={8} borderRadius="2xl" boxShadow="xl">
-                    <CardBody textAlign="center" py={16}>
-                        <VStack spacing={6}>
-                            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                                <IconButton
-                                    icon={<Icon as={FiVolume2} boxSize={10} />}
-                                    colorScheme="brand"
-                                    size="lg"
-                                    isRound
-                                    w="100px"
-                                    h="100px"
-                                    onClick={() => playAudio(current.chinese)}
-                                    boxShadow="lg"
-                                />
-                            </motion.div>
-                            <Text color="gray.500" fontSize="md">Nhấn vào loa để nghe phát âm</Text>
-                        </VStack>
-                    </CardBody>
-                </Card>
-
-                <SimpleGrid columns={1} spacing={4}>
-                    {quizOptions.map((option, i) => {
-                        const isCorrect = option === current.meaning;
-                        const isSelected = selectedOption === option;
-                        let bg = 'white';
-                        let borderColor = 'gray.200';
-
-                        if (showAnswer) {
-                            if (isCorrect) { bg = 'green.50'; borderColor = 'green.500'; }
-                            else if (isSelected && !isCorrect) { bg = 'red.50'; borderColor = 'red.500'; }
-                        } else if (isSelected) {
-                            bg = 'brand.50';
-                            borderColor = 'brand.500';
-                        }
-
-                        return (
-                            <Box
-                                key={i}
-                                p={5}
-                                bg={bg}
-                                borderRadius="xl"
-                                border="2px solid"
-                                borderColor={borderColor}
-                                cursor={showAnswer ? 'default' : 'pointer'}
-                                transition="all 0.2s"
-                                onClick={() => {
-                                    if (!showAnswer) {
-                                        setSelectedOption(option);
-                                        playAudio(current.chinese);
-                                    }
-                                }}
-                                _hover={!showAnswer ? { borderColor: 'brand.400', transform: 'translateY(-2px)', shadow: 'md' } : {}}
-                            >
-                                <HStack>
-                                    <Badge borderRadius="full" px={2} mr={3} colorScheme="gray">{i + 1}</Badge>
-                                    <Text fontSize="lg" fontWeight="medium">{option}</Text>
-                                </HStack>
-                            </Box>
-                        );
-                    })}
-                </SimpleGrid>
-
-                {selectedOption && !showAnswer && (
-                    <Button
-                        mt={8}
-                        w="full"
-                        colorScheme="brand"
-                        size="lg"
-                        height="60px"
-                        borderRadius="xl"
-                        onClick={handleListeningAnswer}
-                        boxShadow="lg"
-                    >
-                        Kiểm tra
-                    </Button>
-                )}
-            </Box>
-        );
-    }
-
-    // Matching Mode
-    if (gameMode === 'matching') {
-        return (
-            <Box maxW="1000px" mx="auto" pt={6}>
-                <HStack mb={8}>
-                    <IconButton
-                        icon={<FiArrowLeft />}
-                        variant="ghost"
-                        onClick={resetGame}
-                        aria-label="Quay lại"
-                    />
-                    <Heading size="md" flex={1} textAlign="center">Nối từ vựng</Heading>
-                    <Badge colorScheme="brand" fontSize="xl" borderRadius="lg" px={3} py={1}>
-                        {Math.floor(matchedIds.length / 2)}/{matchingItems.length / 2}
-                    </Badge>
-                </HStack>
-
-                <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
-                    {matchingItems.map((item) => {
-                        const isSelected = selectedMatch?.id === item.id;
-                        const isMatched = matchedIds.includes(item.id);
-                        return (
-                            <motion.div
-                                key={item.id}
-                                whileHover={!isMatched ? { scale: 1.05 } : {}}
-                                whileTap={!isMatched ? { scale: 0.95 } : {}}
-                            >
-                                <Card
-                                    cursor={isMatched ? 'default' : 'pointer'}
-                                    onClick={() => !isMatched && handleMatchingClick(item)}
-                                    bg={isMatched ? 'green.100' : isSelected ? 'brand.100' : 'white'}
-                                    borderColor={isSelected ? 'brand.500' : 'transparent'}
-                                    borderWidth="2px"
-                                    opacity={isMatched ? 0.6 : 1}
-                                    boxShadow={isSelected ? 'lg' : 'sm'}
-                                    h="120px"
-                                    borderRadius="xl"
-                                >
-                                    <CardBody p={2} display="flex" alignItems="center" justifyContent="center" textAlign="center">
-                                        <Text fontWeight="bold" fontSize={item.type === 'chinese' ? '2xl' : 'md'} fontFamily={item.type === 'chinese' ? "'Noto Sans SC'" : 'inherit'}>
-                                            {item.content}
-                                        </Text>
-                                    </CardBody>
-                                </Card>
-                            </motion.div>
-                        )
-                    })}
-                </SimpleGrid>
-            </Box>
-        );
-    }
-
-    // Typing Mode
-    if (gameMode === 'typing') {
-        const isCorrect =
-            userAnswer.toLowerCase().trim() === current.chinese.toLowerCase() ||
-            userAnswer.toLowerCase().trim() === current.pinyin?.toLowerCase();
-
-        return (
-            <Box maxW="600px" mx="auto" pt={10}>
-                <HStack mb={8}>
-                    <IconButton
-                        icon={<FiArrowLeft />}
-                        variant="ghost"
-                        onClick={resetGame}
-                        aria-label="Quay lại"
-                    />
-                    <Progress value={progress} flex={1} colorScheme="brand" borderRadius="full" hasStripe isAnimated />
-                    <Badge>{currentIndex + 1}/{vocabularies.length}</Badge>
-                </HStack>
-
-                <Card mb={8} borderRadius="2xl" boxShadow="xl">
-                    <CardBody textAlign="center" py={12}>
-                        <Text fontSize="3xl" fontWeight="bold" mb={4} color="gray.800">
-                            {current.meaning}
-                        </Text>
-                        <Text color="gray.500">Gõ chữ Hán hoặc Pinyin tương ứng</Text>
-                    </CardBody>
-                </Card>
-
-                <Input
-                    size="lg"
-                    placeholder="Nhập câu trả lời..."
-                    value={userAnswer}
-                    onChange={(e) => setUserAnswer(e.target.value)}
-                    isDisabled={showAnswer}
-                    bg={showAnswer ? (isCorrect ? 'green.50' : 'red.50') : 'white'}
-                    textAlign="center"
-                    fontSize="2xl"
-                    h="60px"
-                    borderRadius="xl"
-                    onKeyPress={(e) => e.key === 'Enter' && !showAnswer && handleTypingAnswer()}
-                    boxShadow="sm"
-                />
-
-                {showAnswer && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                        <Box mt={6} p={6} bg={isCorrect ? 'green.50' : 'red.50'} borderRadius="xl" textAlign="center" border="1px dashed" borderColor={isCorrect ? 'green.200' : 'red.200'}>
-                            <HStack justify="center" mb={2}>
-                                <Icon as={isCorrect ? FiCheckCircle : FiX} color={isCorrect ? 'green.500' : 'red.500'} fontSize="2xl" />
-                                <Text fontWeight="bold" fontSize="xl" color={isCorrect ? 'green.600' : 'red.600'}>
-                                    {isCorrect ? 'Chính xác!' : 'Sai rồi!'}
-                                </Text>
+                        {showAnswer && (
+                            <HStack mt={8} spacing={6} justify="center">
+                                <Button size="lg" colorScheme="red" variant="outline" w="120px" borderRadius="2xl" onClick={() => handleFlashcardAnswer(false)}>Quên</Button>
+                                <Button size="lg" colorScheme="green" w="120px" borderRadius="2xl" onClick={() => handleFlashcardAnswer(true)}>Đã nhớ</Button>
                             </HStack>
-                            {!isCorrect && (
-                                <Box mt={2}>
-                                    <Text color="gray.600">Đáp án đúng là:</Text>
-                                    <Text fontSize="2xl" fontWeight="bold" fontFamily="'Noto Sans SC'" mt={1}>
-                                        {current.chinese}
-                                    </Text>
-                                    <Text color="gray.500">{current.pinyin}</Text>
-                                </Box>
+                        )}
+                    </Box>
+                )}
+
+                {(gameMode === 'quiz' || gameMode === 'listening') && (
+                    <Box>
+                        <Card mb={8} borderRadius="2xl" boxShadow="xl" p={8} textAlign="center">
+                            {gameMode === 'quiz' ? (
+                                <VStack>
+                                    <Text fontSize="5xl" fontWeight="bold" fontFamily="heading" color="brand.600">{current.word}</Text>
+                                    <Text color="gray.500">{current.pronunciation}</Text>
+                                </VStack>
+                            ) : (
+                                <IconButton icon={<FiVolume2 size={40} />} w="120px" h="120px" isRound colorScheme="brand" onClick={() => playAudio(current.word)} mb={4} />
                             )}
-                        </Box>
-                    </motion.div>
-                )}
+                            <IconButton icon={<FiVolume2 />} size="sm" isRound position="absolute" top={4} right={4} onClick={() => playAudio(current.word)} />
+                        </Card>
 
-                {!showAnswer && (
-                    <Button
-                        mt={8}
-                        w="full"
-                        colorScheme="brand"
-                        size="lg"
-                        height="60px"
-                        borderRadius="xl"
-                        onClick={handleTypingAnswer}
-                        isDisabled={!userAnswer.trim()}
-                        boxShadow="lg"
-                    >
-                        Kiểm tra
-                    </Button>
-                )}
-            </Box>
-        );
-    }
+                        <SimpleGrid columns={1} spacing={4}>
+                            {quizOptions.map((option, i) => {
+                                const isCorrect = option === current.meaning;
+                                const isSelected = selectedOption === option;
+                                let bg = 'white';
+                                let borderColor = 'transparent';
+                                let color = 'gray.800';
 
-    return null;
+                                if (showAnswer) {
+                                    if (isCorrect) { bg = 'green.500'; color = 'white'; }
+                                    else if (isSelected && !isCorrect) { bg = 'red.500'; color = 'white'; }
+                                } else if (isSelected) {
+                                    borderColor = 'brand.500';
+                                    bg = 'brand.50';
+                                }
+
+                                return (
+                                    <Button
+                                        key={i}
+                                        h="auto"
+                                        py={4}
+                                        bg={bg}
+                                        color={color}
+                                        border="2px solid"
+                                        borderColor={borderColor || 'gray.100'}
+                                        borderRadius="xl"
+                                        justifyContent="flex-start"
+                                        onClick={() => !showAnswer && setSelectedOption(option)}
+                                        _hover={{ transform: 'scale(1.02)' }}
+                                        boxShadow="sm"
+                                    >
+                                        <Badge mr={3} borderRadius="full" boxSize="6" display="flex" alignItems="center" justifyContent="center" bg={showAnswer && isCorrect ? 'whiteAlpha.400' : 'gray.100'}>{i + 1}</Badge>
+                                        <Text fontSize="lg">{option}</Text>
+                                        {showAnswer && isCorrect && <Icon as={FiCheckCircle} ml="auto" fontSize="xl" />}
+                                    </Button>
+                                );
+                            })}
+                        </SimpleGrid>
+
+                        {selectedOption && !showAnswer && (
+                            <Button mt={8} w="full" colorScheme="brand" size="lg" borderRadius="xl" onClick={handleQuizAnswer}>Kiểm tra</Button>
+                        )}
+                    </Box>
+                )}
+            </AnimatePresence>
+        </Container>
+    );
 }
 
 export default Practice;

@@ -2,11 +2,15 @@ import { IsString, IsOptional, IsNumber } from 'class-validator';
 
 export class CreateVocabularyDto {
     @IsString()
-    chinese: string;
+    word: string;
 
     @IsOptional()
     @IsString()
-    pinyin?: string;
+    pronunciation?: string;
+
+    @IsOptional()
+    @IsString()
+    pronunciation2?: string;
 
     @IsString()
     meaning: string;
@@ -18,10 +22,6 @@ export class CreateVocabularyDto {
     @IsOptional()
     @IsString()
     partOfSpeech?: string;
-
-    @IsOptional()
-    @IsString()
-    audio?: string;
 
     @IsNumber()
     vocabularySetId: number;

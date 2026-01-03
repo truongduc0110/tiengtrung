@@ -11,6 +11,7 @@ import {
 import { User } from '../users/user.entity';
 import { ClassMember } from './class-member.entity';
 import { VocabularySet } from '../vocabulary-sets/vocabulary-set.entity';
+import { Language } from '../languages/language.entity';
 
 @Entity('classes')
 export class Class {
@@ -35,9 +36,16 @@ export class Class {
     @Column()
     ownerId: number;
 
+    @Column()
+    languageId: number;
+
     @ManyToOne(() => User)
     @JoinColumn({ name: 'ownerId' })
     owner: User;
+
+    @ManyToOne(() => Language)
+    @JoinColumn({ name: 'languageId' })
+    language: Language;
 
     @OneToMany(() => ClassMember, (member) => member.class)
     members: ClassMember[];

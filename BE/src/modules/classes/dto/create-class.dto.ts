@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 
 export class CreateClassDto {
     @IsString()
@@ -15,4 +15,7 @@ export class CreateClassDto {
     @IsOptional()
     @IsBoolean()
     isPublic?: boolean;
+
+    @IsNumber()
+    languageId: number;
 }

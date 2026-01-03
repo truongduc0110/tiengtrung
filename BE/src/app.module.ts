@@ -8,8 +8,9 @@ import { VocabularySetsModule } from './modules/vocabulary-sets/vocabulary-sets.
 import { VocabulariesModule } from './modules/vocabularies/vocabularies.module';
 import { ProgressModule } from './modules/progress/progress.module';
 import { StreakModule } from './modules/streak/streak.module';
-import { AiModule } from './modules/ai/ai.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { LanguagesModule } from './modules/languages/languages.module';
+import { TtsModule } from './modules/tts/tts.module';
 
 @Module({
     imports: [
@@ -39,12 +40,13 @@ import { AdminModule } from './modules/admin/admin.module';
         // Feature modules
         AuthModule,
         UsersModule,
+        LanguagesModule,
+        TtsModule,
         ClassesModule,
         VocabularySetsModule,
         VocabulariesModule,
         ProgressModule,
         StreakModule,
-        AiModule,
         AdminModule,
     ],
 })
